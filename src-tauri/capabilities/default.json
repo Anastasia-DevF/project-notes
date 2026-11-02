@@ -1,0 +1,11 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "main-capability",
+  "description": "Permissions required by the Project Notes main window",
+  "windows": ["main"],
+  "permissions": [
+    "core:default",
+    "store:default",
+    "opener:default"
+  ]
+}
