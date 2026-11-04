@@ -1,0 +1,112 @@
+name: Release desktop apps
+
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build ${{ matrix.build_name }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: macos-15-intel
+            build_name: macOS Intel
+            bundles: dmg
+            artifact_name: project-notes-macos-x64
+            artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
+            apple_signing_identity: "-"
+
+          - platform: macos-15
+            build_name: macOS Apple Silicon
+            bundles: dmg
+            artifact_name: project-notes-macos-arm64
+            artifact_path: src-tauri/target/release/bundle/dmg/*.dmg
+            apple_signing_identity: "-"
+
+          - platform: windows-latest
+            build_name: Windows x64
+            bundles: nsis,msi
+            artifact_name: project-notes-windows-x64
+            artifact_path: |
+              src-tauri/target/release/bundle/nsis/*.exe
+              src-tauri/target/release/bundle/msi/*.msi
+            apple_signing_identity: ""
+
+          - platform: ubuntu-22.04
+            build_name: Linux x64
+            bundles: deb,appimage
+            artifact_name: project-notes-linux-x64
+            artifact_path: |
+              src-tauri/target/release/bundle/deb/*.deb
+              src-tauri/target/release/bundle/appimage/*.AppImage
+            apple_signing_identity: ""
+
+    runs-on: ${{ matrix.platform }}
+
+    steps:
+      - name: Get repository code
+        uses: actions/checkout@v7
+
+      - name: Install Linux system dependencies
+        if: matrix.platform == 'ubuntu-22.04'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf xdg-utils
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build Tauri app
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ matrix.apple_signing_identity }}
+        run: npm run tauri build -- --bundles ${{ matrix.bundles }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: ${{ matrix.artifact_path }}
+          if-no-files-found: error
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v8
+        with:
+          path: release-files
+          merge-multiple: true
+
+      - name: Create release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release create "${GITHUB_REF_NAME}" release-files/* \
+            --verify-tag \
+            --title "Project Notes ${GITHUB_REF_NAME}" \
+            --generate-notes
