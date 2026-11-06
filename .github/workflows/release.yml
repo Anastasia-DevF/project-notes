@@ -113,5 +113,5 @@ jobs:
               --generate-notes
           fi
 
-          gh release upload "${GITHUB_REF_NAME}" release-files/*/* \
+          gh release upload "${GITHUB_REF_NAME}" release-files/*.dmg release-files/*/* \
             --clobber
